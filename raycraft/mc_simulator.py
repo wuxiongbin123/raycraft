@@ -1,6 +1,8 @@
 # 修复导入路径：使用本地MineStudio
 import sys
 from pathlib import Path
+import ast
+import json
 
 # 添加当前目录到路径（修复相对导入问题）
 current_dir = Path(__file__).parent
@@ -34,6 +36,7 @@ class ToolBase:
         self.name = name
 
 from utils.action_converter import ActionFromLLMConverter
+from utils.action_mapping import OneActionTokenizer
 from utils.sim_callbacks_loader import load_simulator_setup_from_yaml
 import json
 import os
@@ -180,6 +183,7 @@ class MCSimulator(ToolBase):
                 map_camera_to_11=True,   # 21×21 → 11×11
                 return_numpy=True        # 返回 np.array([int])
             )
+            self.action_tokenizer = OneActionTokenizer(tokenizer_type="qwen2_vl")
             self._obs_shape = (obs_h, obs_w, 3)
             self.last_obs = None
 
@@ -188,38 +192,44 @@ class MCSimulator(ToolBase):
             logger.info(f"[mc_simulator] __init__ elapsed={elapsed_ms:.2f} ms")
 
 
-    def execute(self, action_input, **kwargs) -> tuple:
-        """执行动作
+    # def execute(self, action_input, **kwargs) -> tuple:
+    #     """执行动作
 
-        Args:
-            action_input: 支持两种格式
-                - str: LLM格式 '[{"action": "attack", "yaw": -25.0, "pitch": 8.0}]'
-                - dict: Agent格式 {'buttons': 5, 'camera': 222}
-        """
-        # 判断action格式并转换
-        if isinstance(action_input, str):
-            # LLM格式：使用ActionConverter转换
-            action = self.action_converter.convert(action_input, self._obs_shape)
-            rich_console.log(f"[DEBUG] LLM action: {action_input}")
-            rich_console.log(f"[DEBUG] converted to: {action}")
-        elif isinstance(action_input, dict):
-            # Agent格式：将整数转换为numpy数组
-            import numpy as np
-            action = {}
-            for key, value in action_input.items():
-                if isinstance(value, int):
-                    action[key] = np.array(value)
-                else:
-                    action[key] = value
-            rich_console.log(f"[DEBUG] Agent action (dict): {action_input}")
-            rich_console.log(f"[DEBUG] converted to numpy: {action}")
-        else:
-            raise ValueError(f"Unsupported action type: {type(action_input)}")
+    #     Args:
+    #         action_input: 支持两种格式
+    #             - str: LLM格式 '[{"action": "attack", "yaw": -25.0, "pitch": 8.0}]'
+    #             - dict: Agent格式 {'buttons': 5, 'camera': 222}
+    #     """
+    #     # 判断action格式并转换
+    #     if isinstance(action_input, str):
+    #         # LLM格式：使用ActionConverter转换
+    #         print(f' before convert {type(action_input)=}')
+    #         # action = self.action_converter.convert(action_input, self._obs_shape)
+    #         action_input = json.loads(action_input)
+    #         # 转化完要是一个list
+    #         print(f'after convert, {action_input=}, {type(action_input)=}, {type(action_input[0])=}')
+    #         action = self.action_tokenizer.decode(action_input)
+    #         # LLM action是special token，但是actoin是button和camera
+    #         # rich_console.log(f"[DEBUG] LLM action: {action_input}")
+    #         rich_console.log(f"[DEBUG] converted to: {action}, {type(action)=}")
+    #     elif isinstance(action_input, dict):
+    #         # Agent格式：将整数转换为numpy数组
+    #         import numpy as np
+    #         action = {}
+    #         for key, value in action_input.items():
+    #             if isinstance(value, int):
+    #                 action[key] = np.array(value)
+    #             else:
+    #                 action[key] = value
+    #         rich_console.log(f"[DEBUG] Agent action (dict): {action_input}")
+    #         rich_console.log(f"[DEBUG] converted to numpy: {action}")
+    #     else:
+    #         raise ValueError(f"Unsupported action type: {type(action_input)}")
 
-        obs, reward, terminated, truncated, info = self.simulator.step(action)
-        done =  (terminated or truncated)
-        self.last_obs = obs  # 更新最后观察状态
-        return obs, reward, done, info
+    #     obs, reward, terminated, truncated, info = self.simulator.step(action)
+    #     done =  (terminated or truncated)
+    #     self.last_obs = obs  # 更新最后观察状态
+    #     return obs, reward, done, info
 
     def step(self, action_input, **kwargs) -> tuple:
         """执行动作
@@ -232,9 +242,20 @@ class MCSimulator(ToolBase):
         # 判断action格式并转换
         if isinstance(action_input, str):
             # LLM格式：使用ActionConverter转换
-            action = self.action_converter.convert(action_input, self._obs_shape)
-            rich_console.log(f"[DEBUG] LLM action: {action_input}")
-            rich_console.log(f"[DEBUG] converted to: {action}")
+            print(f' before convert {type(action_input)=}')
+            # action = self.action_converter.convert(action_input, self._obs_shape)
+            action_input = json.loads(action_input)
+            # 转化完要是一个list
+            print(f'after convert, {action_input=}, {type(action_input)=}, {type(action_input[0])=}')
+            action = self.action_tokenizer.decode(action_input)[0] # 这里如果是action chunk还要改
+            # LLM action是special token，但是actoin是button和camera
+            # rich_console.log(f"[DEBUG] LLM action: {action_input}")
+            rich_console.log(f"[DEBUG] converted to: {action}, {type(action)=}")
+
+
+            # action = self.action_converter.convert(action_input, self._obs_shape)
+            # rich_console.log(f"[DEBUG] LLM action: {action_input}")
+            # rich_console.log(f"[DEBUG] converted to: {action}")
         elif isinstance(action_input, dict):
             # Agent格式：将整数转换为numpy数组
             import numpy as np
@@ -250,9 +271,15 @@ class MCSimulator(ToolBase):
             raise ValueError(f"Unsupported action type: {type(action_input)}")
 
         obs, reward, terminated, truncated, info = self.simulator.step(action)
-        done = not (terminated or truncated)
+        done = (terminated or truncated)
         self.last_obs = obs  # 更新最后观察状态
         return obs, reward, done, info
+
+    def close(self):
+        # 现在应能够正常保存视频
+        print(f'[DEBUG] close with success')
+        self.simulator.close()
+        return 
 
     def reset(self, raw_prompt=None, origin_multi_modal_data=None, config=None):
         """重置环境
@@ -287,35 +314,41 @@ class MCSimulator(ToolBase):
 
 if __name__ == "__main__":
     # 直接运行时需要修复相对导入
-    import sys
-    from pathlib import Path
-    current_dir = Path(__file__).parent
-    if str(current_dir) not in sys.path:
-        sys.path.insert(0, str(current_dir))
+    # import sys
+    # from pathlib import Path
+    # current_dir = Path(__file__).parent
+    # if str(current_dir) not in sys.path:
+    #     sys.path.insert(0, str(current_dir))
 
-    # 直接从当前目录导入,避免触发 raycraft.__init__ 的循环导入
-    from utils.action_converter import ActionFromLLMConverter
-    from utils.sim_callbacks_loader import load_simulator_setup_from_yaml
+    # # 直接从当前目录导入,避免触发 raycraft.__init__ 的循环导入
+    # from utils.action_converter import ActionFromLLMConverter
+    # from utils.sim_callbacks_loader import load_simulator_setup_from_yaml
 
-    tool = MCSimulator(
-        "mc_simulator",
-        "configs/kill/kill_zombie_with_record.yaml",  # 相对路径
-        {},
-        config="configs/kill/kill_zombie_with_record.yaml"  # 相对路径
-    )
+    # tool = MCSimulator(
+    #     "mc_simulator",
+    #     "/mnt/shared-storage-user/tanxin/wuxiongbin/JarvisVLA/jarvisvla/evaluate/config/kill/kill_zombie.yaml",  # 相对路径
+    #     {},
+    #     config="/mnt/shared-storage-user/tanxin/wuxiongbin/JarvisVLA/jarvisvla/evaluate/config/kill/kill_zombie.yaml"  # 相对路径
+    # )
 
-    # 现在 reset 只需要调用,不需要传 config
-    obs, info = tool.reset()
+    # # 现在 reset 只需要调用,不需要传 config
+    # obs, info = tool.reset()
 
-    test_actions = [
-        '<think> I need to target a Zombie in the distance to complete the given task \'kill_entity:zombie\'. From the current viewpoint, there appears to be a zombie visible on the horizon. The appropriate action would be to face towards the zombie and attack it.</think><answer> [{"action": "attack", "yaw": 0.0, "pitch": 0.0}] </answer>',
-        '<think> I need to target a Zombie in the distance to complete the given task \'kill_entity:zombie\'. From the current viewpoint, there appears to be a zombie visible on the horizon. The appropriate action would be to face towards the zombie and attack it.</think><answer> [{"action": "attack", "yaw": 0.0, "pitch": 0.0}] </answer>',
-        '<think> I need to target a Zombie in the distance to complete the given task \'kill_entity:zombie\'. From the current viewpoint, there appears to be a zombie visible on the horizon. The appropriate action would be to face towards the zombie and attack it.</think><answer> [{"action": "attack", "yaw": 0.0, "pitch": 0.0}] </answer>'
-    ]
+    # test_actions = [
+    #     '<think> I need to target a Zombie in the distance to complete the given task \'kill_entity:zombie\'. From the current viewpoint, there appears to be a zombie visible on the horizon. The appropriate action would be to face towards the zombie and attack it.</think><answer> [{"action": "attack", "yaw": 0.0, "pitch": 0.0}] </answer>',
+    #     '<think> I need to target a Zombie in the distance to complete the given task \'kill_entity:zombie\'. From the current viewpoint, there appears to be a zombie visible on the horizon. The appropriate action would be to face towards the zombie and attack it.</think><answer> [{"action": "attack", "yaw": 0.0, "pitch": 0.0}] </answer>',
+    #     '<think> I need to target a Zombie in the distance to complete the given task \'kill_entity:zombie\'. From the current viewpoint, there appears to be a zombie visible on the horizon. The appropriate action would be to face towards the zombie and attack it.</think><answer> [{"action": "attack", "yaw": 0.0, "pitch": 0.0}] </answer>'
+    # ]
 
-    for idx, resp in enumerate(test_actions, start=1):
-        for _ in range(46):
-            logger.info(f"[mc_simulator][test] action={resp}")
-            obs, reward, done, info = tool.execute(resp)
 
-    tool.simulator.close()
+    # for idx, resp in enumerate(test_actions, start=1):
+    #     for _ in range(46):
+    #         logger.info(f"[mc_simulator][test] action={resp}")
+    #         obs, reward, done, info = tool.execute(resp)
+
+    tokenizer = OneActionTokenizer(tokenizer_type="qwen2_vl")
+    
+    action_string = "[677, 151835, 151878, 151897, 151836, 4432, 151645]"
+    res = tokenizer.decode(ast.literal_eval(action_string))
+    breakpoint()
+    # tool.simulator.close()

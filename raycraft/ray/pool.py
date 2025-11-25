@@ -252,6 +252,16 @@ class EnvPool:
             return False
 
         try:
+            env_actor = self.env_registry[uuid]
+        
+            # 👇 先正常关闭（关键！）
+            try:
+                ray.get(env_actor.close.remote(), timeout=30)  # 等待 close 完成
+                self.logger.info(f"Environment {uuid} closed successfully")
+            except Exception as e:
+                self.logger.error(f"Environment {uuid} close failed: {e}")
+                # 即使 close 失败，仍继续销毁
+                
             # 销毁Ray Actor
             ray.kill(self.env_registry[uuid])
 

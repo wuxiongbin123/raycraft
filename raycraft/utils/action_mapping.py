@@ -23,6 +23,12 @@ from minestudio.utils.vpt_lib.action_mapping import CameraHierarchicalMapping
 from minestudio.simulator.entry import CameraConfig
 
 
+def _map_cam_21_to_11(camera_dec: int) -> int:
+    y21, x21 = divmod(int(camera_dec), 21)
+    y11 = int(round(y21 / 20 * 10))
+    x11 = int(round(x21 / 20 * 10))
+    return y11 * 11 + x11
+
 def get_special_token(model_id: str, bases: list = [10, 3, 3, 3, 2, 2, 2, 2, 2, 2, 11, 11]) -> list:
     """
     Generate a list of all unknown tokens to mark unknown tokens.
@@ -362,14 +368,18 @@ class OneActionTokenizer(ActionTokenizer):
     def decode(self,tokens:Union[torch.Tensor,List]):
         """decode the tokens to action
         """
-        group_actions = self.token_2_group_action(tokens,)
+       
+       # 注意，这里应该是从数字输入进去，而不是string
+        print(f'[DEBUG] in decode, tokens are {tokens}')
+        group_actions = self.token_2_group_action(tokens,) # group actions 本身有问题
         
         actions = [self.group_action_2_decimal_action(group_action) for group_action in group_actions ]
         action_dicts = []
         for action in  actions:
             action_dict = {
                 "buttons":np.array([action[0]]),
-                "camera":np.array([action[1]]),  #返回一个工作
+                # "camera":np.array([action[1]]),  #返回一个工作
+                "camera":np.array([_map_cam_21_to_11(action[1])]),
             }
             action_dict = OrderedDict({key: value[0] for key, value in action_dict.items()})
             action_dicts.append(action_dict)
@@ -568,6 +578,8 @@ class OneActionTokenizer(ActionTokenizer):
         Raises:
             ValueError: If the input length does not match the expected number of digits or exceeds base limits.
         """
+
+        
         if len(inputs) != len(self.bases):
             raise ValueError("The input number does not match the expected number of digits.")
         decimal_results = [0, 0]
@@ -583,6 +595,7 @@ class OneActionTokenizer(ActionTokenizer):
                 decimal_results[0] = 8640  # Special inventory flag
             else:
                 decimal_results[1] = decimal_results[1] * self.bases[i] + digit
+        
         return tuple(decimal_results)
 
     def null_token(self) -> str:

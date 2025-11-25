@@ -89,6 +89,7 @@ class RemoteEnv:
         Args:
             timeout: 超时时间（秒），需要等待MP4保存
         """
+        print(f'[DEBUG] close the env!')
         resp = self.session.delete(
             f"{self.server_url}/envs/{self.env_id}",
             timeout=timeout
@@ -96,7 +97,7 @@ class RemoteEnv:
         resp.raise_for_status()
         self.session.close()
 
-    def get_reset_result(self, wait: int = 60, timeout: int = 120) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def get_reset_result(self, wait: int = 600, timeout: int = 600) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """获取最后一次 reset 的结果
 
         用于 batch_create_envs 后台异步 reset 的结果获取

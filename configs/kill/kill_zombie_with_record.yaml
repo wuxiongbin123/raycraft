@@ -46,7 +46,7 @@ init_inventory:
 sim_callbacks:
   - import: "minestudio.simulator.callbacks.RecordCallback"
     kwargs:
-      record_path: "/fs-computility-new/nuclear/leishanzhe/repo/raycraft/output"  # 使用绝对路径
+      record_path: "/mnt/shared-storage-user/tanxin/wuxiongbin/raycraft/output"  # 使用绝对路径
       fps: 30
       frame_type: "pov"
       recording: true  # 启用录制

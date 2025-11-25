@@ -23,6 +23,9 @@ from pydantic import BaseModel, Field
 
 from raycraft.ray.global_pool import get_global_env_pool
 
+import sys
+minestudio_path = "/mnt/shared-storage-user/tanxin/wuxiongbin/raycraft/MineStudio"
+sys.path.insert(0, minestudio_path)
 
 # ============================================================================
 # 数据模型
@@ -334,6 +337,7 @@ async def get_reset_result(env_id: str, wait: int = 0):
 async def step_env(env_id: str, request: StepRequest):
     """Step环境"""
     try:
+        
         env_pool = get_global_env_pool()
         env_ref = ray.get(env_pool.get_env.remote(env_id))
 
@@ -374,6 +378,7 @@ async def step_env(env_id: str, request: StepRequest):
 @app.delete("/envs/{env_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def close_env(env_id: str):
     """关闭环境"""
+    print(f'[DEBUG] destroy {env_id=}!')
     try:
         env_pool = get_global_env_pool()
         success = ray.get(env_pool.close_env.remote(env_id))
